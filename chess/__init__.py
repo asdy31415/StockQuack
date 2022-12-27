@@ -20,7 +20,7 @@ Polyglot opening book probing, PGN reading and writing,
 Gaviota tablebase probing,
 Syzygy tablebase probing, and XBoard/UCI engine communication.
 """
-
+#test
 from __future__ import annotations
 
 __author__ = "Niklas Fiekas"
@@ -53,9 +53,9 @@ COLORS = [WHITE, BLACK] = [True, False]
 COLOR_NAMES = ["black", "white"]
 
 PieceType = int
-PIECE_TYPES = [PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING] = range(1, 7)
-PIECE_SYMBOLS = [None, "p", "n", "b", "r", "q", "k"]
-PIECE_NAMES = [None, "pawn", "knight", "bishop", "rook", "queen", "king"]
+PIECE_TYPES = [PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, DUCK,] = range(1, 8)
+PIECE_SYMBOLS = [None, "p", "n", "b", "r", "q", "k", "@"]
+PIECE_NAMES = [None, "pawn", "knight", "bishop", "rook", "queen", "king" ,"duck"]
 
 def piece_symbol(piece_type: PieceType) -> str:
     return typing.cast(str, PIECE_SYMBOLS[piece_type])
@@ -70,6 +70,7 @@ UNICODE_PIECE_SYMBOLS = {
     "Q": "♕", "q": "♛",
     "K": "♔", "k": "♚",
     "P": "♙", "p": "♟",
+    "@": "🦆", "@": "🦆",
 }
 
 FILE_NAMES = ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -929,6 +930,8 @@ class BaseBoard:
             self.queens |= mask
         elif piece_type == KING:
             self.kings |= mask
+        elif piece_type == DUCK:
+            self.ducks |= mask
         else:
             return
 
@@ -1770,97 +1773,10 @@ class Board(BaseBoard):
         king = self.king(self.turn)
         return BB_EMPTY if king is None else self.attackers_mask(not self.turn, king)
 
-    def checkers(self) -> SquareSet:
-        """
-        Gets the pieces currently giving check.
 
-        Returns a :class:`set of squares <chess.SquareSet>`.
-        """
-        return SquareSet(self.checkers_mask())
-
-    def is_check(self) -> bool:
-        """Tests if the current side to move is in check."""
-        return bool(self.checkers_mask())
-
-    def gives_check(self, move: Move) -> bool:
-        """
-        Probes if the given move would put the opponent in check. The move
-        must be at least pseudo-legal.
-        """
-        self.push(move)
-        try:
-            return self.is_check()
-        finally:
-            self.pop()
-
-    def is_into_check(self, move: Move) -> bool:
-        king = self.king(self.turn)
-        if king is None:
-            return False
-
-        # If already in check, look if it is an evasion.
-        checkers = self.attackers_mask(not self.turn, king)
-        if checkers and move not in self._generate_evasions(king, checkers, BB_SQUARES[move.from_square], BB_SQUARES[move.to_square]):
-            return True
-
-        return not self._is_safe(king, self._slider_blockers(king), move)
-
-    def was_into_check(self) -> bool:
-        king = self.king(not self.turn)
-        return king is not None and self.is_attacked_by(self.turn, king)
-
-    def is_pseudo_legal(self, move: Move) -> bool:
-        # Null moves are not pseudo-legal.
-        if not move:
-            return False
-
-        # Drops are not pseudo-legal.
-        if move.drop:
-            return False
-
-        # Source square must not be vacant.
-        piece = self.piece_type_at(move.from_square)
-        if not piece:
-            return False
-
-        # Get square masks.
-        from_mask = BB_SQUARES[move.from_square]
-        to_mask = BB_SQUARES[move.to_square]
-
-        # Check turn.
-        if not self.occupied_co[self.turn] & from_mask:
-            return False
-
-        # Only pawns can promote and only on the backrank.
-        if move.promotion:
-            if piece != PAWN:
-                return False
-
-            if self.turn == WHITE and square_rank(move.to_square) != 7:
-                return False
-            elif self.turn == BLACK and square_rank(move.to_square) != 0:
-                return False
-
-        # Handle castling.
-        if piece == KING:
-            move = self._from_chess960(self.chess960, move.from_square, move.to_square)
-            if move in self.generate_castling_moves():
-                return True
-
-        # Destination square can not be occupied.
-        if self.occupied_co[self.turn] & to_mask:
-            return False
-
-        # Handle pawn moves.
-        if piece == PAWN:
-            return move in self.generate_pseudo_legal_moves(from_mask, to_mask)
-
-        # Handle all other pieces.
-        return bool(self.attacks_mask(move.from_square) & to_mask)
 
     def is_legal(self, move: Move) -> bool:
-        return not self.is_variant_end() and self.is_pseudo_legal(move) and not self.is_into_check(move)
-
+        return not self.is_variant_end() and self.is_pseudo_legal(move)
     def is_variant_end(self) -> bool:
         """
         Checks if the game is over due to a special variant end condition.
@@ -1952,13 +1868,6 @@ class Board(BaseBoard):
                 return Outcome(Termination.THREEFOLD_REPETITION, None)
 
         return None
-
-    def is_checkmate(self) -> bool:
-        """Checks if the current position is a checkmate."""
-        if not self.is_check():
-            return False
-
-        return not any(self.generate_legal_moves())
 
     def is_stalemate(self) -> bool:
         """Checks if the current position is a stalemate."""
